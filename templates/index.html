@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      .divrow {
+        width: 100%;
+        text-align: center; 
+      }
+      .divblock {
+        width: 100px;
+        float: left;
+      }
+    </style>
+
+    <script>    
+      async function streamer(path, output_element){
+        //output_element.innerHTML = "Checking connection to camera...";
+        const response = await fetch(path);
+        const readableStream = response.body;
+        const reader = readableStream.getReader();
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            var text = new TextDecoder("utf-8").decode(value);
+            const objects = text.split("\n");
+            console.log(objects);
+            status = JSON.parse(objects.at(-2)).status;
+            output_element.innerHTML = status
+        }
+        return status
+      }
+
+      async function connect(){
+        status = await streamer("/connect",document.getElementById("connection_message"))
+        console.log(status);
+        if (status == 'Camera Online!'){
+          document.getElementById('camera_list').src = '\parse?mode={{mode}}';
+          document.getElementById("connection_status").innerHTML = "Connected";
+          document.getElementById("connection_button").value = "Disconnect";
+          //document.getElementById("connection_button").addEventListener('click', disconnect())
+        } 
+      }
+
+      async function disconnect(){
+        status = streamer("/disconnect",document.getElementById("connection_message"))
+        if (status == 'Camera disconnected'){
+          document.getElementById('camera_list').src = None;
+          document.getElementById("connection_status").innerHTML = "Disconnected";
+          document.getElementById("connection_button").value = "Connect";
+          //document.getElementById("connection_button").addEventListener('click', connect())
+        } 
+      }
+
+      async function toggle_connect(connectivity){
+        connection_message_holder = document.getElementById("connection_message")
+        if (connectivity =='OK'){
+          connection_message_holder.innerHTML = 'Attempting to disconnect...'
+          status = streamer("/disconnect",connection_message_holder)
+          if (status == 'Camera disconnected'){
+            document.getElementById('camera_list').src = None;
+            document.getElementById("connection_status").innerHTML = "Disconnected";
+            document.getElementById("connection_button").value = "Connect";
+          }
+        }
+        else{
+          connection_message_holder.innerHTML = 'Attempting to connect...'
+          status = await streamer("/connect",connection_message_holder)
+          console.log(status);
+          if (status == 'Camera Online!'){
+            document.getElementById('camera_list').src = '\parse?mode={{mode}}';
+            document.getElementById("connection_status").innerHTML = "Connected";
+            document.getElementById("connection_button").value = "Disconnect";
+          }
+        }
+      }
+
+    </script>
+
+  </head>
+  <body style="margin:0px;padding:0px;overflow:hidden;height:100vh">
+
+    <h1>Wildlife Camera</h1>
+
+    <div class="divrow">
+      <div class="divblock">
+        <div id="connection_status">
+          {% if connectivity=='OK'%}
+          Connected
+          {% else %}
+          Disconnected
+          {% endif %}
+        </div>
+      </div>
+      <div class="divblock">
+        <input type="button" id="connection_button" onclick="toggle_connect('{{connectivity}}');" value="{{'Disconnect' if connectivity=='OK' else 'Connect'}}" />
+      </div>
+      <div class="divblock" style="width:200px">
+        <div id="connection_message"></div>
+      </div>
+    </div>
+    
+    <iframe id="camera_list" frameborder="0" style="overflow:hidden;height:100%;width:100%"></iframe>
+
+    <script>
+      var connectivity='{{connectivity}}';
+      if (connectivity=='OK'){
+        document.getElementById('camera_list').src = '\parse?mode={{mode}}';
+      }
+    </script>
+  </body>
+
+</html>
