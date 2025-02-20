@@ -1,30 +1,19 @@
-from flask import Flask, render_template, Response, request, render_template_string
-import requests
+from flask import Flask, render_template, Response, request, render_template_string, send_file
 import time
 import json
 import connections
-from datetime import datetime
-from bs4 import BeautifulSoup
+import constants
+import camera
 
 import os
 
 app = Flask(__name__, static_url_path='/static')
 
 ##To do
-###Proper connect/disconnect buttons and status area
+##camera API for CRUD - list, get_file, delete
 ###when not connected, show local filelist only
 ###button to indicate whether it downloaded or not
 ###delete button
-
-constants = {
-    'camera_bluetooth_id':'d6:39:32:33:7c:46',
-    'camera_bluetooth_service_id':'0000ffe0-0000-1000-8000-00805f9b34fb',
-    'camera_bluetooth_characteristic_id':'0000ffeb-0000-1000-8000-00805f9b34fb',
-    'camera_ip':'192.168.8.120',
-    'camera_wifi_prefix':'4K WIFI CAM-',
-    'camera_wifi_password': '12345678',
-
-}
 
 @app.route('/', methods=['GET'])
 def index():
@@ -32,194 +21,111 @@ def index():
     if mode != "photo":
         mode = "movie"
 
-    connectivity = connections.check_connectivity(constants['camera_ip'],5)
+    connectivity = connections.check_connectivity(constants.camera['camera_ip'],3)
     return render_template('index.html', mode=mode, connectivity=connectivity['status'])
 
 @app.route('/connect', methods=['GET', 'POST'])
 def connect():
-
-    def connect_sequence():
-        status = 'Failed'
-        loop = 0
-        while (loop <= 3) & (status == 'Failed'):
-            loop += 1
-            yield json.dumps({'status':'Activating WiFi (attempt '+str(loop)+'/4)'}) + "\n"
-
-            ##check if the network is already broadcasting. If not, activate it
-            target_SSID = connections.getSSID(constants['camera_wifi_prefix'])
-            if target_SSID['status'] != 'error':
-                yield json.dumps({'status':'Wifi Network activated: '+ target_SSID['message']}) + "\n"
-                activation_result = connections.connect_wifi(target_SSID['message'], constants['camera_wifi_password'])
-            else:
-                bluetooth_result = connections.activate_wifi(constants['camera_bluetooth_id'],constants['camera_bluetooth_service_id'],constants['camera_bluetooth_characteristic_id'])
-                if bluetooth_result['status'] == 'OK':
-                    activation_result = connections.connect_wifi(target_SSID['message'], constants['camera_wifi_password'])
-                    yield json.dumps({'status':bluetooth_result['message']}) + "\n"    
-                else:
-                    activation_result = {'status':'error'}
-                    yield json.dumps({'status':bluetooth_result['message']}) + "\n"
-
-            if activation_result['status'] == 'OK':
-                yield json.dumps({'status':activation_result['message']}) + "\n"
-                connectivity_result = connections.check_connectivity(constants['camera_ip'])
-                if connectivity_result['status'] == 'OK':
-                    status = connectivity_result['message']
-
-            #if bluetooth_result['status'] == 'OK':
-            #    yield json.dumps({'status':bluetooth_result['message']}) + "\n"
-            #    target_SSID = connections.getSSID(constants['camera_wifi_prefix'])
-            #    if target_SSID['status'] != 'error':
-            #        yield json.dumps({'status':'Wifi Network activated: '+ target_SSID['message']}) + "\n"
-            #        activation_result = connections.connect_wifi(target_SSID['message'], constants['camera_wifi_password'])
-            #        if activation_result['status'] == 'OK':
-            #            yield json.dumps({'status':activation_result['message']}) + "\n"
-            #            connectivity_result = connections.check_connectivity(constants['camera_ip'])
-            #            if connectivity_result['status'] == 'OK':
-            #                status = connectivity_result['message']
-            #        else:
-            #            yield json.dumps({'status':activation_result['message']}) + "\n"
-            #    else:
-            #        yield json.dumps({'status':target_SSID['message']}) + "\n"    
-            #else:
-            #    yield json.dumps({'status':bluetooth_result['message']}) + "\n"
-
-            if status == 'Failed':
-                yield json.dumps({'status':'Failed... Retrying...'}) + "\n"
-
-        if status != 'Failed':
-            yield json.dumps({'status':status}) + "\n"
-        else:
-            yield json.dumps({'status':'Failed... will not retry...'}) + "\n"
-
     #check if camera can be reached
-    response = connections.check_connectivity(constants['camera_ip'],4)
-    if response['status'] == 'OK':
-        return json.dumps({'status':response['message']}) + "\n"
+    connectivity_result = connections.check_connectivity(constants.camera['camera_ip'],4)
+    if connectivity_result['status'] == 'OK':
+        return json.dumps(connectivity_result) + "\n"
     else: ##connect to camera
-        return Response(connect_sequence(), mimetype='text/event-stream')
+        return Response(connections.connect_sequence(constants.camera['camera_ip'], constants.camera['camera_wifi_prefix'],constants.camera['camera_wifi_password'], constants.camera['camera_bluetooth_id'],constants.camera['camera_bluetooth_service_id'],constants.camera['camera_bluetooth_characteristic_id']), mimetype='text/event-stream')
 
 @app.route('/disconnect')
 def disconnect():
-    targetSSID = connections.getSSID(constants['camera_wifi_prefix'])
-    connections.disconnect_wifi(targetSSID['message'])
-    time.sleep(2)
-    connectivity_result = connections.check_connectivity(constants['camera_ip'])
+    getSSID = connections.getSSID(constants.camera['camera_wifi_prefix'])
+    connections.disconnect_wifi(getSSID['targetSSID'])
+    time.sleep(5)
+    connectivity_result = connections.check_connectivity(constants.camera['camera_ip'])
     if connectivity_result['status']=='error':
-        status = {'status':'Camera disconnected'}
+        status = {'status':'OK','message':'Camera disconnected'}
     else:
-        status = {'status':'Failed: Camera still online'} 
+        status = {'status':'error', 'message': 'Camera still online'} 
 
     return json.dumps(status) + "\n"
 
-
-@app.route('/parse')
-def parse():
+@app.route('/list')
+def list():
     mode = request.args.get('mode')
+    display_list = []
 
-    ##get a list of the files that have already been downloaded 
-    local_filelist = get_local_files(mode)
+    local_list = camera.get_local_files(mode)
+    remote_list = camera.remote_list(constants.camera['camera_ip'], mode)
 
-    html = requests.get('http://'+constants['camera_ip']+'/DCIM/'+mode+'/').text
-    soup = BeautifulSoup(html, features="lxml")
+    for remote_file in remote_list['file_list'][:]:
+        for local_file in local_list[:]:
+            if remote_file['timestamp'] == local_file['timestamp']:
+               remote_file['actions'] = ['delete-local', 'delete-remote','view']
+               remote_file['name'] = local_file['name']
+               local_list.remove(local_file)
 
-    data = []
-    table = soup.find('table')
-    rows = table.find_all('tr')
-    for row in rows:
-        cols = row.find_all('td')
-        cols = [ele.text.strip() for ele in cols]
+    display_list = local_list + remote_list['file_list']
+    display_list = sorted(display_list, key=lambda d: float('-inf') if d['date'] is None else d['date'])
 
-        if len(cols) == 4:
-            item_time = datetime.strptime(cols[2], "%Y/%m/%d %H:%M:%S").timestamp()
+    actions_buttons = {
+        'delete-local':'<input type="button" class="delete-local" onclick="media_action("delete-local");" value="Delete Local"/>',
+        'delete-remote':'<input type="button" class="delete-remote" onclick="media_action("delete-remote");" value="Delete Remote"/>',
+        'view':'<a href="/view?filename=#filename#&filetype=#filetype#"><input type="button" class="view"value="View"/></a>',
+        'download': '<a href="/download?filename=#filename#&filetype=#filetype#&filetime=#filetime#"><input type="button" class="download"value="Download"/></a>'
+    }
 
-            if mode=='movie':
-                file_extension = '.mp4'
-            elif mode=='photo':
-                file_extension = '.jpg'
-            local_filename = str(int(item_time)) + file_extension
+    for element_index, element in enumerate(display_list):
+        for action_index, action in enumerate(display_list[element_index]['actions']):
+            for key, value in actions_buttons.items():
+                if key == action:
+                    display_list[element_index]['actions'][action_index] = value\
+                        .replace("#filename#",str(display_list[element_index]['name']))\
+                        .replace("#filetype#",str(display_list[element_index]['type']))\
+                        .replace("#filetime#",str(display_list[element_index]['timestamp']))
+            
+    return render_template('list.html', records=display_list, colnames=['name','date','actions'])
 
-            if local_filename in local_filelist:
-                link = cols[0]
-                download_status = '<a href="/static/'+mode+'/'+local_filename+'">Downloaded</a>'
-            else:
-                download_status = '<a href="/download?file='+cols[0]+'&method=save&mode='+mode+'&date='+str(int(item_time))+'">Download</a>'
-                link = '<a href="/download?file='+cols[0]+'&method=load&mode='+mode+'&date='+str(int(item_time))+'">'+cols[0]+'</a>'
-            item = {
-                'link':link,
-                'size':cols[1],
-                'date': cols[2],
-                'status' : download_status 
-            }
-            data.append(item)
 
-    return render_template('camera.html', records=data, colnames=['link','size','date','status'])
+@app.route('/delete', methods=['GET'])
+def delete():
+    location = request.args.get('location')
+    filetype = request.args.get('filetype')
+    filename = request.args.get('filename')
 
-def get_local_files(mode):
-    filelist = []
-    for (dirpath, dirnames, filenames) in os.walk('static/'+mode+'/'):
-        filelist.extend(filenames)
-        break
-    return filelist
+    if location == 'local':
+        delete_repsonse = camera.delete_local(filename,filetype)
+    elif location == 'remote':
+        delete_repsonse = camera.delete_remote(constants.camera['camera_ip'],filename,filetype)
+
+    print(delete_repsonse)
+    return(delete_repsonse)
+
+@app.route('/view',methods=['GET'])
+def view():
+    filename = request.args.get('filename')
+    filetype = request.args.get('filetype')
+
+    filelocation = 'static/'+filetype+'/'+filename
+
+    dictionary = {"photo":"image/png", "movie":"video/mp4" } 
+    for key in dictionary.keys():
+        filetype = filetype.replace(key, dictionary[key])
+
+    return send_file(filelocation,filetype)
 
 @app.route('/download', methods=['GET'])
-def download():
-    mode = request.args.get('mode')
-    method = request.args.get('method')
+def copy_file():
+    filename = request.args.get('filename')
+    filetype = request.args.get('filetype')
+    filetime = request.args.get('filetime')
 
-    #check if camera can be reached
-    response = os.system(f"ping -c 1 {constants['camera_ip']}")
+    copy_response = camera.copy_file(constants.camera['camera_ip'],filename, filetype, filetime)
 
-    if response != 0:
-        return json.dumps({'status':'Camera Offline'} )   
+    dictionary = {"photo":"image/png", "movie":"video/mp4" } 
+    for key in dictionary.keys():
+        filetype = filetype.replace(key, dictionary[key])
 
-    filename = request.args.get('file')
-    url = 'http://'+constants['camera_ip']+'/DCIM/'+mode+'/'+filename
-
-    import urllib.request
-
-    response = urllib.request.urlopen(url)
-    item = response.read()
-
-    ##make the local filename the timestamp of the capture
-    if mode=='movie':
-        file_extension = '.mp4'
-    elif mode=='photo':
-        file_extension = '.jpg'
-    
-    if method == 'save':
-        local_filename = str(request.args.get('date')) + file_extension
-    elif method == 'load':
-        local_filename = 'temp' + file_extension
-
-    with open('static/'+mode+'/'+local_filename, "wb") as file:
-        file.write(item)
-
-    if mode == 'movie':
-        render_string = '''
-            <!doctype html>
-            <html>
-                <head>
-                </head>
-                <body>
-                <video width="320" height="240" controls>
-                    <source src="static'''+mode+'''"/"'''+local_filename+'''" type="video/mp4">
-                </video>
-                </body>
-            </html>
-            '''
+    if copy_response['status'] == 'OK':
+        return send_file(copy_response['filelocation'],filetype)
     else:
-        render_string = '''
-            <!doctype html>
-            <html>
-                <head>
-                </head>
-                <body>
-                <img width="100%" src="static/'''+mode+'''/'''+local_filename+'''" type="video/mp4">
-                </body>
-            </html>
-            '''
-    return render_template_string(render_string)
+        return render_template_string('Error')
 
-    
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0')

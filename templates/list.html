@@ -1,0 +1,43 @@
+<html>
+
+<head>
+
+
+<style>
+    .actions{
+        color: red;
+    }
+</style>
+</head>
+
+<body>
+    <table border="1">
+        <thead>
+            <tr>
+                {% for col in colnames %}
+                <th>{{ col }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for record in records %}
+            <tr>
+                {% for col in colnames %}
+                <td class="{{col}}">
+                    {% if record[col] is iterable and record[col] is not string  %}
+                        {% for element in record[col] %}
+                        {{element |safe }}
+                        {% endfor %}
+                    {% else %}
+                        {{ record[col] | safe }}
+                    {% endif %}
+                </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+
+
+</html>

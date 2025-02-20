@@ -24,60 +24,41 @@
             var text = new TextDecoder("utf-8").decode(value);
             const objects = text.split("\n");
             console.log(objects);
-            status = JSON.parse(objects.at(-2)).status;
-            output_element.innerHTML = status
+            message = JSON.parse(objects.at(-2)).message;
+            output_element.innerHTML = message
         }
-        return status
-      }
-
-      async function connect(){
-        status = await streamer("/connect",document.getElementById("connection_message"))
-        console.log(status);
-        if (status == 'Camera Online!'){
-          document.getElementById('camera_list').src = '\parse?mode={{mode}}';
-          document.getElementById("connection_status").innerHTML = "Connected";
-          document.getElementById("connection_button").value = "Disconnect";
-          //document.getElementById("connection_button").addEventListener('click', disconnect())
-        } 
-      }
-
-      async function disconnect(){
-        status = streamer("/disconnect",document.getElementById("connection_message"))
-        if (status == 'Camera disconnected'){
-          document.getElementById('camera_list').src = None;
-          document.getElementById("connection_status").innerHTML = "Disconnected";
-          document.getElementById("connection_button").value = "Connect";
-          //document.getElementById("connection_button").addEventListener('click', connect())
-        } 
+        return message
       }
 
       async function toggle_connect(connectivity){
         connection_message_holder = document.getElementById("connection_message")
         if (connectivity =='OK'){
           connection_message_holder.innerHTML = 'Attempting to disconnect...'
-          status = streamer("/disconnect",connection_message_holder)
-          if (status == 'Camera disconnected'){
-            document.getElementById('camera_list').src = None;
+          message = await streamer("/disconnect",connection_message_holder)
+          console.log(message)
+          if (message == 'Camera disconnected'){
+            document.getElementById('camera_list').src = '\list?mode={{mode}}';
             document.getElementById("connection_status").innerHTML = "Disconnected";
             document.getElementById("connection_button").value = "Connect";
+            document.getElementById("connection_button").onclick = function() {toggle_connect('error');};
           }
         }
         else{
           connection_message_holder.innerHTML = 'Attempting to connect...'
           status = await streamer("/connect",connection_message_holder)
-          console.log(status);
-          if (status == 'Camera Online!'){
-            document.getElementById('camera_list').src = '\parse?mode={{mode}}';
+          console.log(message);
+          if (message == 'Camera Online!'){
+            document.getElementById('camera_list').src = '\list?mode={{mode}}';
             document.getElementById("connection_status").innerHTML = "Connected";
             document.getElementById("connection_button").value = "Disconnect";
+            document.getElementById("connection_button").onclick = function() {toggle_connect('OK');};
           }
         }
       }
-
     </script>
 
   </head>
-  <body style="margin:0px;padding:0px;overflow:hidden;height:100vh">
+  <body style="margin:0px;padding:0px;overflow:hidden;height:80vh">
 
     <h1>Wildlife Camera</h1>
 
@@ -99,13 +80,13 @@
       </div>
     </div>
     
-    <iframe id="camera_list" frameborder="0" style="overflow:hidden;height:100%;width:100%"></iframe>
+    <iframe id="camera_list" src = "/list?mode={{mode}}" frameborder="0" style="overflow:hidden;height:100%;width:100%"></iframe>
 
     <script>
-      var connectivity='{{connectivity}}';
-      if (connectivity=='OK'){
-        document.getElementById('camera_list').src = '\parse?mode={{mode}}';
-      }
+      //var connectivity='{{connectivity}}';
+      //if (connectivity=='OK'){
+      //  document.getElementById('camera_list').src = '\list?mode={{mode}}';
+      //}
     </script>
   </body>
 
