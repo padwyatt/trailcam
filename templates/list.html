@@ -8,6 +8,28 @@
         color: red;
     }
 </style>
+
+<script>
+    function delete_media(location, filename, filetype){
+        var xhr = new XMLHttpRequest();
+        var url = "/delete?location="+location+"&filename="+filename+"&filetype="+filetype// + encodeURIComponent(JSON.stringify({"location": location, "filename": filename, "filetype":filetype}));
+        xhr.open("GET", url, true);
+        xhr.setRequestHeader("Content-Type", "application/json");
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState === 4 && xhr.status === 200) {
+                var json = JSON.parse(xhr.responseText);
+                if (json.status = 'OK'){
+                    window.location.reload();
+                }
+                else{
+                    alert(json.message)
+                }
+            }
+        };
+        xhr.send();
+    }
+</script>
+
 </head>
 
 <body>

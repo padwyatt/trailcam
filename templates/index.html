@@ -36,7 +36,7 @@
           connection_message_holder.innerHTML = 'Attempting to disconnect...'
           message = await streamer("/disconnect",connection_message_holder)
           console.log(message)
-          if (message == 'Camera disconnected'){
+          if (message == 'Camera disconnected!'){
             document.getElementById('camera_list').src = '\list?mode={{mode}}';
             document.getElementById("connection_status").innerHTML = "Disconnected";
             document.getElementById("connection_button").value = "Connect";
@@ -55,6 +55,7 @@
           }
         }
       }
+
     </script>
 
   </head>
@@ -82,12 +83,6 @@
     
     <iframe id="camera_list" src = "/list?mode={{mode}}" frameborder="0" style="overflow:hidden;height:100%;width:100%"></iframe>
 
-    <script>
-      //var connectivity='{{connectivity}}';
-      //if (connectivity=='OK'){
-      //  document.getElementById('camera_list').src = '\list?mode={{mode}}';
-      //}
-    </script>
   </body>
 
 </html>

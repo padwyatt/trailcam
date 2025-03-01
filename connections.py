@@ -2,31 +2,41 @@ import subprocess
 from bluepy3.btle import UUID, Peripheral
 import json
 import time
+import shared
 
 def activate_wifi(camera_bluetooth_id,camera_bluetooth_service_id, camera_bluetooth_characteristic_id):
     #connect to bluetooth and activate the wifi
     try:
         p = Peripheral(camera_bluetooth_id, "random") #get the device
     except Exception as e:
-        return {'status':'error', 'message': 'Cannot find bluetooth camera: ' + repr(e)}
-
+        message = {'status':'error', 'message': 'Cannot find bluetooth camera: ' + repr(e)}
+        shared.log_message(message['message'])
+        return message
     try:
         serv = p.getServiceByUUID(camera_bluetooth_service_id) #get service
     except Exception as e:
-        return {'status':'error', 'message': 'Cannot connect to bluetooth camera: ' + repr(e)}
-    
+        message = {'status':'error', 'message': 'Cannot connect to bluetooth camera: ' + repr(e)}
+        shared.log_message(message['message'])
+        return message
+
     try:
         c = serv.getCharacteristics(camera_bluetooth_characteristic_id)[0]
     except Exception as e:
-        return {'status':'error', 'message': 'Cannot find relevant characteristic: ' + repr(e)}
+        message = {'status':'error', 'message': 'Cannot find relevant characteristic: ' + repr(e)}
+        shared.log_message(message['message'])
+        return message
     
     try:
         p.writeCharacteristic(c.valHandle+1,bytes("\x01\x00",encoding='utf-8')) 
         p.disconnect()
-        return {'status':'OK','message':'Wifi Turning on...'}
+        message = {'status':'OK','message':'Wifi Turning on...'}
+        shared.log_message(message['message'])
+        return message
     except Exception as e:
         p.disconnect()
-        return {'status':'error', 'message': 'Cannot write to relevant characteristic descriptor: ' + repr(e)}
+        message =  {'status':'error', 'message': 'Cannot write to relevant characteristic descriptor: ' + repr(e)}
+        shared.log_message(message['message'])
+        return message
 
 
 def getSSID(camera_wifi_prefix,timeout=20):
@@ -42,9 +52,13 @@ def getSSID(camera_wifi_prefix,timeout=20):
                 if camera_wifi_prefix in SSID:
                     targetSSID = SSID.strip()                
     if targetSSID == None:
-        return {'status':'error', 'message': 'Camera Wifi not found','targetSSID':None}
+        message = {'status':'error', 'message': 'Camera Wifi not found','targetSSID':None}
+        shared.log_message(message['message'] + ' - Found:'+','.join(SSIDS))
+        return message
     else:
-        return {'status':'OK', 'message':'Wifi '+targetSSID+' activated','targetSSID': targetSSID}
+        message = {'status':'OK', 'message':'Wifi '+targetSSID+' activated','targetSSID': targetSSID}
+        shared.log_message(message['message'])
+        return message
 
 
 def connect_wifi(targetSSID,camera_wifi_password):
@@ -55,9 +69,13 @@ def connect_wifi(targetSSID,camera_wifi_password):
         proc = subprocess.run(["sudo","nmcli","d","wifi","connect",targetSSID,"password",camera_wifi_password],capture_output=True)
         result = proc.returncode
     if result == 0:
-        return {'status':'OK', 'message':'WiFi connected...testing connection...'}
+        message =  {'status':'OK', 'message':'WiFi connected...testing connection...'}
+        shared.log_message(message['message'])
+        return message
     else:
-        return {'status':'error', 'message':'Wifi Failed to connect'}
+        message = {'status':'error', 'message':'Wifi Failed to connect'}
+        shared.log_message(message['message'])
+        return message
 
 def check_connectivity(camera_ip,timeout=10):
     ####Check connectivity
@@ -67,17 +85,32 @@ def check_connectivity(camera_ip,timeout=10):
         proc = subprocess.run(["ping","-c","1",camera_ip],capture_output=True)
         result = proc.returncode
     if result == 0:
-        return {'status':'OK', 'message':'Camera Online!'}
+        message = {'status':'OK', 'message':'Camera Online!'}
+        shared.log_message(message['message'])
+        return message
     else:
-        return {'status':'error', 'message':'Camera not Online'}
+        message = {'status':'error', 'message':'Camera not Online'}
+        shared.log_message(message['message'])
+        return message
 
-def disconnect_wifi(targetSSID):
+def disconnect_wifi(targetSSID, camera_ip):
     proc = subprocess.run(["sudo","nmcli","connection","delete",targetSSID],capture_output=True)
     result = proc.returncode
     if result == 0:
-        return {'status':'OK', 'message':'Camera disconnected!'}
+        time.sleep(5)
+        connectivity_result = check_connectivity(camera_ip)
+        if connectivity_result['status']=='error':
+            message =  {'status':'OK', 'message':'Camera disconnected!'}
+            shared.log_message(message['message'])
+            return message
+        else:
+            message = {'status':'error', 'message':'Camera could not disconnect'}
+            shared.log_message(message['message'])
+            return message
     else:
-        return {'status':'error', 'message':'Camera count not disconnect'}
+        message = {'status':'error', 'message':'Camera could not disconnect'}
+        shared.log_message(message['message'])
+        return message
 
 def connect_sequence(camera_ip, camera_wifi_prefix,camera_wifi_password, camera_bluetooth_id,camera_bluetooth_service_id,camera_bluetooth_characteristic_id):
     status = None
@@ -86,7 +119,9 @@ def connect_sequence(camera_ip, camera_wifi_prefix,camera_wifi_password, camera_
 
     while (loop < max_retries) & (status != 'OK'):
         loop += 1
-        yield json.dumps({'status':'None','message':'Activating WiFi (attempt '+str(loop)+'/3)'}) + "\n"
+        message = {'status':'None','message':'Activating WiFi (attempt '+str(loop)+'/3)'}
+        shared.log_message(message['message'])
+        yield json.dumps(message) + "\n"
 
         ##check if the network is already broadcasting
         getSSID_result = getSSID(camera_wifi_prefix,10)
@@ -117,9 +152,13 @@ def connect_sequence(camera_ip, camera_wifi_prefix,camera_wifi_password, camera_
             status=connectivity_result['status']
 
         if status == 'Failed':
-            yield json.dumps({'status':'error','message':'Failed... Retrying...'}) + "\n"
+            message = {'status':'error','message':'Failed... Retrying...'}
+            shared.log_message(message['message'])
+            yield json.dumps(message) + "\n"
 
     if status == 'OK':
         yield json.dumps(connectivity_result) + "\n" 
     else:
-        yield json.dumps({'status':'error','message':'Failed... will not retry...'}) + "\n"
+        message = {'status':'error','message':'Failed... will not retry...'}
+        shared.log_message(message['message'])
+        yield json.dumps(message) + "\n"

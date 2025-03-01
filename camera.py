@@ -8,6 +8,8 @@ import os
 import urllib.request
 import random
 
+
+
 def remote_list(camera_ip, mode):
     file_list = []
 
@@ -93,12 +95,17 @@ def delete_local(filename, filetype):
     try:
         local_url = 'static/'+filetype+'/'+filename
         os.remove(local_url)
-
         return {'status':'OK','message':'Local file deleted'}
+    
     except Exception as e:
         print(e)
         return {'status':'error','message':'Could not delete local file'}    
     
 def delete_remote(camera_ip,filename, filetype):
     url = 'http://'+camera_ip+'/DCIM/'+filetype+'/'+filename+'?del=1'
-    return None
+    try:
+        html = requests.get(url, timeout=3).text
+        return {'status':'OK','message':'remote file deleted'}
+    except Exception as e:
+        print(e)
+        return {'status':'error','message':'Could not delete remote file'}  

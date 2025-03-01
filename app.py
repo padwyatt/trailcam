@@ -4,10 +4,12 @@ import json
 import connections
 import constants
 import camera
+import shared
 
 import os
 
 app = Flask(__name__, static_url_path='/static')
+shared.purge_old_lines()
 
 ##To do
 ##camera API for CRUD - list, get_file, delete
@@ -29,22 +31,17 @@ def connect():
     #check if camera can be reached
     connectivity_result = connections.check_connectivity(constants.camera['camera_ip'],4)
     if connectivity_result['status'] == 'OK':
+        shared.log_message(connectivity_result)
         return json.dumps(connectivity_result) + "\n"
     else: ##connect to camera
         return Response(connections.connect_sequence(constants.camera['camera_ip'], constants.camera['camera_wifi_prefix'],constants.camera['camera_wifi_password'], constants.camera['camera_bluetooth_id'],constants.camera['camera_bluetooth_service_id'],constants.camera['camera_bluetooth_characteristic_id']), mimetype='text/event-stream')
 
 @app.route('/disconnect')
 def disconnect():
+    shared.log_message("Attempting to disconnect")
     getSSID = connections.getSSID(constants.camera['camera_wifi_prefix'])
-    connections.disconnect_wifi(getSSID['targetSSID'])
-    time.sleep(5)
-    connectivity_result = connections.check_connectivity(constants.camera['camera_ip'])
-    if connectivity_result['status']=='error':
-        status = {'status':'OK','message':'Camera disconnected'}
-    else:
-        status = {'status':'error', 'message': 'Camera still online'} 
-
-    return json.dumps(status) + "\n"
+    disconnection_status = connections.disconnect_wifi(getSSID['targetSSID'],constants.camera['camera_ip'] )
+    return json.dumps(disconnection_status) + "\n"
 
 @app.route('/list')
 def list():
@@ -65,8 +62,8 @@ def list():
     display_list = sorted(display_list, key=lambda d: float('-inf') if d['date'] is None else d['date'])
 
     actions_buttons = {
-        'delete-local':'<input type="button" class="delete-local" onclick="media_action("delete-local");" value="Delete Local"/>',
-        'delete-remote':'<input type="button" class="delete-remote" onclick="media_action("delete-remote");" value="Delete Remote"/>',
+        'delete-local':'<input type="button" class="delete" onclick=\'delete_media("local","#filename#","#filetype#");\' value="Delete Local"/>',
+        'delete-remote':'<input type="button" class="delete" onclick=\'delete_media("remote","#filename#","#filetype#");\' value="Delete Remote"/>',
         'view':'<a href="/view?filename=#filename#&filetype=#filetype#"><input type="button" class="view"value="View"/></a>',
         'download': '<a href="/download?filename=#filename#&filetype=#filetype#&filetime=#filetime#"><input type="button" class="download"value="Download"/></a>'
     }
@@ -82,7 +79,6 @@ def list():
             
     return render_template('list.html', records=display_list, colnames=['name','date','actions'])
 
-
 @app.route('/delete', methods=['GET'])
 def delete():
     location = request.args.get('location')
@@ -94,7 +90,6 @@ def delete():
     elif location == 'remote':
         delete_repsonse = camera.delete_remote(constants.camera['camera_ip'],filename,filetype)
 
-    print(delete_repsonse)
     return(delete_repsonse)
 
 @app.route('/view',methods=['GET'])
