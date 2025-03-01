@@ -7,6 +7,8 @@ def log_message(message):
     with open('log.txt', 'a') as file:
         file.write(log_entry)
 
+    print(message)
+
 def purge_old_lines():
     
     cutoff_date = datetime.now() - timedelta(days=30)
